@@ -157,6 +157,9 @@ int main(int argc, char **argv)
                        (size_t)FF_VIEW_W * (size_t)FF_VIEW_H, fp);
                 fclose(fp);
             }
+            printf("dump: %s frame=%ld screen=%d ingame=%d\n",
+                   dump_path, frames, Screen_Id(), Ingame_Active());
+            fflush(stdout);
             break;
         }
 

@@ -1,0 +1,255 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev
+
+      - name: Strict C89 conformance
+        run: |
+          sdl=$(pkg-config --cflags sdl2 | sed 's/-I/-isystem /g')
+          for f in ff_*.c; do
+            gcc -std=c89 -pedantic-errors -Wall -Wextra $sdl -c "$f" -o /dev/null
+          done
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Headless frame dump
+        run: |
+          cd build
+          set +e
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+            timeout 60 ./ffrace 1 --dump=frame.raw --dump-frame=60 | tee frame.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "ffrace exit code: $rc"
+          test "$rc" = 0
+          expected=$((240 * 320 * 2))
+          actual=$(stat -c%s frame.raw)
+          test "$actual" = "$expected" || {
+            echo "frame.raw is $actual bytes, expected $expected"
+            exit 1
+          }
+          grep -q 'screen=0 ingame=0' frame.txt || {
+            echo "the dump did not capture the main menu:"
+            cat frame.txt
+            exit 1
+          }
+
+      # Touch_Draw paints the on-screen pad straight into the SDL renderer after
+      # the 240x320 texture is copied, so --dump never contains it. This step
+      # exercises the touch init / pad geometry / resizable-window path only.
+      - name: Headless run with the touch overlay enabled
+        run: |
+          cd build
+          set +e
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy FFRACE_TOUCH=1 \
+            timeout 60 ./ffrace 1 --dump=touch.raw --dump-frame=60
+          rc=$?
+          set -e
+          echo "ffrace exit code: $rc"
+          test "$rc" = 0
+          expected=$((240 * 320 * 2))
+          actual=$(stat -c%s touch.raw)
+          test "$actual" = "$expected" || {
+            echo "touch.raw is $actual bytes, expected $expected"
+            exit 1
+          }
+
+      - name: Headless race start
+        run: |
+          cd build
+          set +e
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+            timeout 60 ./ffrace 1 --activate=0,0,4 \
+              --dump=race.raw --dump-frame=200 | tee race.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "ffrace exit code: $rc"
+          test "$rc" = 0
+          test "$(stat -c%s race.raw)" = "$((240 * 320 * 2))"
+          grep -q 'ingame=1' race.txt || {
+            echo "the dump did not capture a running race:"
+            cat race.txt
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffrace-linux-${{ matrix.arch }}
+          path: |
+            build/ffrace
+            build/BITMAP
+            build/Sounds
+            build/Musics
+
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x86
+            platform: Win32
+            triplet: x86-windows
+          - runner: windows-11-arm
+            arch: arm64
+            platform: ARM64
+            triplet: arm64-windows
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2
+        run: vcpkg install sdl2:${{ matrix.triplet }}
+
+      - name: Build
+        run: |
+          cmake -S . -B build -A ${{ matrix.platform }} `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
+          cmake --build build --config Release
+
+      - name: Headless frame dump
+        run: |
+          cd build/Release
+          $env:SDL_VIDEODRIVER = 'dummy'
+          $env:SDL_AUDIODRIVER = 'dummy'
+          $p = Start-Process .\ffrace.exe -ArgumentList '1','--dump=frame.raw','--dump-frame=60' -Wait -PassThru
+          "ffrace exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { exit 1 }
+          $expected = 240 * 320 * 2
+          $actual = (Get-Item frame.raw).Length
+          if ($actual -ne $expected) {
+            "frame.raw is $actual bytes, expected $expected"
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffrace-windows-${{ matrix.arch }}
+          path: |
+            build/Release/ffrace.exe
+            build/Release/SDL2.dll
+            build/Release/BITMAP
+            build/Release/Sounds
+            build/Release/Musics
+
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Assemble the Gradle project
+        run: sh tools/android_prepare.sh
+
+      - name: Build APK
+        working-directory: build-android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Check the APK payload
+        run: |
+          apk=$(ls build-android/app/build/outputs/apk/debug/*.apk)
+          echo "apk: $apk"
+          unzip -l "$apk" > apk.txt
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            for so in libmain.so libSDL2.so; do
+              grep -q "lib/$abi/$so" apk.txt || {
+                echo "missing lib/$abi/$so"
+                exit 1
+              }
+            done
+          done
+          for asset in BITMAP/330.bmp Sounds/sblam.wav Musics/mainmenu.tkm; do
+            grep -q "assets/$asset" apk.txt || {
+              echo "missing assets/$asset"
+              exit 1
+            }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffrace-android
+          path: build-android/app/build/outputs/apk/debug/*.apk
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package every configuration
+        run: |
+          ver=${GITHUB_REF_NAME#v}
+          mkdir -p dist
+          for arch in x86_64 arm64; do
+            d=artifacts/ffrace-linux-$arch
+            chmod +x "$d/ffrace"
+            tar --mode=0755 -czf "dist/ffrace-$ver-linux-$arch.tar.gz" -C "$d" .
+          done
+          for arch in x86 arm64; do
+            (cd "artifacts/ffrace-windows-$arch" &&
+             zip -qr "$GITHUB_WORKSPACE/dist/ffrace-$ver-windows-$arch.zip" .)
+          done
+          cp artifacts/ffrace-android/*.apk "dist/ffrace-$ver-android.apk"
+          ls -l dist
+
+      - name: Write the release notes
+        run: |
+          cat > notes.md <<'EOF'
+          Порт FFRace (Fast Future Race) на C89 + SDL2.
+
+          | Файл | Платформа |
+          |---|---|
+          | `*-android.apk` | Android 5.0+, universal (armeabi-v7a, arm64-v8a, x86, x86_64), экранное управление |
+          | `*-windows-x86.zip` | Windows x86 |
+          | `*-windows-arm64.zip` | Windows ARM64 |
+          | `*-linux-x86_64.tar.gz` | Linux x86_64 |
+          | `*-linux-arm64.tar.gz` | Linux ARM64 |
+
+          Ассеты уложены рядом с исполняемым файлом, распаковывать целиком.
+          На Linux нужен установленный SDL2 (`libsdl2-2.0-0`), в остальных сборках SDL2 лежит внутри.
+          EOF
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "FFRace port $GITHUB_REF_NAME" \
+            --notes-file notes.md
