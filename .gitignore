@@ -1,0 +1,11 @@
+build/
+build-cmake/
+dist/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.7z
+*.raw
+ff_keyconfig.c
+ff_keyconfig.h
