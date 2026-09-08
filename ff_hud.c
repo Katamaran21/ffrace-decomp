@@ -69,47 +69,65 @@ static void Standing(const ff_surface *dst, int x, int y)
 }
 
 /* FFRace.exe 0x00046754 at 0x0004ae30 steps the standings rows by 0xf from 0x14
-   and columns a row at 5, 0x5a, 0x65, 0x70, 0x7b, 0x80 and 0x8b. */
+   and labels each at 5; its 0x0004af1c row columns 0x5a, 0x65, 0x70, 0x7b, 0x80
+   and 0x8b, and its 0x0004bf74 row columns 0x53, 0x5e, 0x69, 0x74, 0x79 and
+   0x84, both at y 0x23. */
 #define FF_CP_ROW_PITCH 0x0f
 #define FF_CP_ROW_BASE  0x14
-#define FF_CP_NAME_X    5
-#define FF_CP_SIGN_X    0x5a
-#define FF_CP_POINT_X   0x7b
+#define FF_CP_LABEL_X   5
+#define FF_CP_DELTA_X   0x5a
+#define FF_CP_SMALL_X   0x53
+#define FF_CP_SMALL_Y   0x23
 
 /* FFRace.exe 0x00046754 passes 0xfffffffb, 0xfffffffd and 0xfffffffe to
    Text_DrawGlyph 0x00013548, whose 0x30 bias turns them into 0x2b, 0x2d and
-   0x2e, and passes 5 as the field of its 0x7b column. */
+   0x2e, and passes 5 as the field of its 0x7b and 0x74 columns. */
 #define FF_CP_PLUS   (-5)
 #define FF_CP_MINUS  (-3)
 #define FF_CP_POINT  (-2)
 #define FF_CP_POINT_FIELD 5
 
-/* FFRace.exe 0x0004ae40 gates 0x00084648 on __rt_udiv(500, 0x000a7654) leaving
-   a remainder below 0xfa. */
+/* FFRace.exe 0x0004ae40 and 0x0004bf30 gate on __rt_udiv(500, 0x000a7654)
+   leaving a remainder below 0xfa. */
 #define FF_CP_BLINK_PERIOD 500
 #define FF_CP_BLINK_ON     0xfa
 
-/* FFRace.exe 0x0004adb8 compares 0x000a772c * 0x3c + 0x000a7728 against
-   0x000902bc * 0x3c + 0x000902a4 + 4. */
+/* FFRace.exe 0x0004adb8 and 0x0004be84 compare 0x000a772c * 0x3c + 0x000a7728
+   against 0x000902bc * 0x3c + 0x000902a4 + 4. */
 #define FF_CP_HOLD_SEC 4
 
-/* FFRace.exe 0x0004aea0 passes 0x000a77ec + slot - 1 to 0x00016cec, 0x0004af1c
-   picks the glyph and the delta from 0x0008546c against 0x00085468 + slot * 4,
-   and 0x0004af60 onwards splits the delta with __rt_sdiv 1000, 100, 10 and 10. */
-static void Checkpoint_Row(const ff_surface *dst, int slot)
+/* FFRace.exe 0x0004ad7c and 0x0004be48 both need __rt_sdiv(0x000832c4 / 4,
+   0x000a76b4) to leave a remainder above 1, the clock below 0x000902bc * 0x3c +
+   0x000902a4 + 4, 0x000a76b4 between 0x000832c4 / 4 and 0x000832c4, and
+   0x000a779c at 0. */
+static int Checkpoint_Active(void)
 {
-    int order = Lap_Order(slot);
-    int y     = order * FF_CP_ROW_PITCH + FF_CP_ROW_BASE;
+    int quarter = Race_Length() / 4;
+    int pos     = Race_Segment();
+
+    if (quarter < 1)
+        return 0;
+    if (pos % quarter <= 1)
+        return 0;
+    if (Ingame_Minutes() * FF_MINUTE_SEC + Physics_Countdown() >=
+        Lap_Minutes(FF_RACER_PLAYER) * FF_MINUTE_SEC +
+            Lap_Seconds(FF_RACER_PLAYER) + FF_CP_HOLD_SEC)
+        return 0;
+
+    return pos > quarter && pos < Race_Length() &&
+           Race_Mode() == FF_RACE_SCRIPTED;
+}
+
+/* FFRace.exe 0x0004af1c and 0x0004bf74 pick the glyph from 0x0008546c against
+   0x00085468 + slot * 4, form the delta from 0x000902a0 and 0x00090288, and
+   split it with __rt_sdiv 1000, 100, 10 and 10 across the columns +0, +0xb,
+   +0x16, +0x21, +0x26 and +0x31. */
+static void Checkpoint_Delta(const ff_surface *dst, int x, int y, int slot)
+{
     int delta;
     int sign;
 
-    if (order == FF_LAP_NO_ORDER)
-        return;
-
-    Text_DrawCentered(dst, FF_CP_NAME_X, y,
-                      Racer_Name(Racer_Base() + slot - 1), 0, 0, 0, 0);
-
-    if (Lap_Order(FF_RACER_PLAYER) < order) {
+    if (Lap_Order(FF_RACER_PLAYER) < Lap_Order(slot)) {
         sign  = FF_CP_PLUS;
         delta = (Lap_Seconds(slot) - Lap_Seconds(FF_RACER_PLAYER)) * 100 -
                 Lap_Hundredths(FF_RACER_PLAYER) + Lap_Hundredths(slot);
@@ -119,52 +137,70 @@ static void Checkpoint_Row(const ff_surface *dst, int slot)
                 Lap_Hundredths(FF_RACER_PLAYER) - Lap_Hundredths(slot);
     }
 
-    Text_DrawGlyph(dst, FF_CP_SIGN_X, y, FF_HUD_FIELD, 0xff, 0xff, 0xff, sign);
-    Text_DrawGlyph(dst, 0x65, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+    Text_DrawGlyph(dst, x, y, FF_HUD_FIELD, 0xff, 0xff, 0xff, sign);
+    Text_DrawGlyph(dst, x + 0x0b, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
                    delta / 1000 % 10);
-    Text_DrawGlyph(dst, 0x70, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+    Text_DrawGlyph(dst, x + 0x16, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
                    delta / 100 % 10);
-    Text_DrawGlyph(dst, FF_CP_POINT_X, y, FF_CP_POINT_FIELD, 0xff, 0xff, 0xff,
+    Text_DrawGlyph(dst, x + 0x21, y, FF_CP_POINT_FIELD, 0xff, 0xff, 0xff,
                    FF_CP_POINT);
-    Text_DrawGlyph(dst, 0x80, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+    Text_DrawGlyph(dst, x + 0x26, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
                    delta / 10 % 10);
-    Text_DrawGlyph(dst, 0x8b, y, FF_HUD_FIELD, 0xff, 0xff, 0xff, delta % 10);
+    Text_DrawGlyph(dst, x + 0x31, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+                   delta % 10);
 }
 
-/* FFRace.exe 0x00046754 at 0x0004ad7c gates on __rt_sdiv(0x000832c4 / 4,
-   0x000a76b4) leaving a remainder above 1, the clock below 0x000902bc * 0x3c +
-   0x000902a4 + 4, 0x000a76b4 between 0x000832c4 / 4 and 0x000832c4, and
-   0x000a779c at 0. */
-static void Checkpoint(const ff_surface *dst)
+/* FFRace.exe 0x0004ae10 draws 0x00084650 at 0x19, 5, 0x0004ae40 blinks
+   0x00084648 on the player's row, and 0x0004ae88 walks slots 2 .. 5 naming each
+   through 0x00016cec with 0x000a77ec + slot - 1. */
+static void Checkpoint_Big(const ff_surface *dst)
 {
-    int quarter = Race_Length() / 4;
-    int pos     = Race_Segment();
     int order;
     int slot;
-
-    if (quarter < 1)
-        return;
-    if (pos % quarter <= 1)
-        return;
-    if (Ingame_Minutes() * FF_MINUTE_SEC + Physics_Countdown() >=
-        Lap_Minutes(FF_RACER_PLAYER) * FF_MINUTE_SEC +
-            Lap_Seconds(FF_RACER_PLAYER) + FF_CP_HOLD_SEC)
-        return;
-    if (pos <= quarter || pos >= Race_Length() ||
-        Race_Mode() != FF_RACE_SCRIPTED)
-        return;
 
     Text_DrawCentered(dst, 0x19, 5, "CHECK POINT", 0, 0, 0, 0);
 
     order = Lap_Order(FF_RACER_PLAYER);
     if (order != FF_LAP_NO_ORDER &&
         Ingame_SecondMs() % FF_CP_BLINK_PERIOD < FF_CP_BLINK_ON)
-        Text_DrawCentered(dst, FF_CP_NAME_X,
+        Text_DrawCentered(dst, FF_CP_LABEL_X,
                           order * FF_CP_ROW_PITCH + FF_CP_ROW_BASE, "PLAYER",
                           0, 0, 0, 0);
 
-    for (slot = FF_RACER_FIRST; slot < FF_RACER_SLOTS; slot++)
-        Checkpoint_Row(dst, slot);
+    for (slot = FF_RACER_FIRST; slot < FF_RACER_SLOTS; slot++) {
+        order = Lap_Order(slot);
+        if (order == FF_LAP_NO_ORDER)
+            continue;
+
+        order = order * FF_CP_ROW_PITCH + FF_CP_ROW_BASE;
+        Text_DrawCentered(dst, FF_CP_LABEL_X, order,
+                          Racer_Name(Racer_Base() + slot - 1), 0, 0, 0, 0);
+        Checkpoint_Delta(dst, FF_CP_DELTA_X, order, slot);
+    }
+}
+
+/* FFRace.exe 0x0004bedc draws 0x00084650 centred at 0x000832b0, 5, 0x0004bf0c
+   draws 0x00084638 at 0x20, 0x23 while 0x0008546c is not 6, and 0x0004bf58 takes
+   the slots of 2 .. 5 whose 0x00085468 entry is 0, or 1 with 0x0008546c at 0. */
+static void Checkpoint_Small(const ff_surface *dst)
+{
+    int player = Lap_Order(FF_RACER_PLAYER);
+    int slot;
+
+    Text_DrawCentered(dst, Menu_CentreX(), 5, "CHECK POINT", 1, 0, 0, 0);
+
+    if (player != FF_LAP_NO_ORDER)
+        Text_DrawCentered(dst, 0x20, FF_CP_SMALL_Y, "TIME", 0, 0, 0, 0);
+
+    if (Ingame_SecondMs() % FF_CP_BLINK_PERIOD >= FF_CP_BLINK_ON)
+        return;
+
+    for (slot = FF_RACER_FIRST; slot < FF_RACER_SLOTS; slot++) {
+        int order = Lap_Order(slot);
+
+        if (order == 0 || (order == 1 && player == 0))
+            Checkpoint_Delta(dst, FF_CP_SMALL_X, FF_CP_SMALL_Y, slot);
+    }
 }
 
 /* FFRace.exe 0x00046754 for 0x000a7630 == 0: 0x0008458c at 0x000832b0,
@@ -179,7 +215,8 @@ static void Hud_Big(const ff_surface *dst)
     float            derived = Physics_Derived();
     int              speed   = (int)(derived * 31.0f);
 
-    Checkpoint(dst);
+    if (Checkpoint_Active())
+        Checkpoint_Big(dst);
 
     Text_DrawCentered(dst, centre, 0x117, ":", 1, 0xff, 0xff, 0xff);
     Clock(dst, centre, 0x118);
@@ -216,6 +253,9 @@ static void Hud_Small(const ff_surface *dst)
     unsigned         key    = Menu_Key();
     double           bar    = (double)Physics_Derived() * 3.5;
     int              centre = Menu_CentreX() - Screen_Layout() / 4;
+
+    if (Checkpoint_Active())
+        Checkpoint_Small(dst);
 
     sprite = AppAssets_Sprite(dst, FF_RES_STRIP);
     if (sprite != 0)
