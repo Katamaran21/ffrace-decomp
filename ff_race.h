@@ -56,6 +56,9 @@
    advance taken while 0x000a779c > 0. */
 #define FF_ENDLESS_SEGMENT 0x1e
 
+/* FFRace.exe 0x00016cec compares its argument against 0 .. 0x1a. */
+#define FF_RACER_NAMES 27
+
 void Race_Init(int mode, int seed, int length, int theme, int sky);
 
 /* FFRace.exe 0x0004f6bc consumes one segment per FF_SEGMENT_LEN of travelled

@@ -89,6 +89,34 @@ void Racer_Seed(int mode)
     ff_racer_dist[5] = ff_racer_dist[4];
 }
 
+int Racer_Base(void)
+{
+    return ff_racer_base;
+}
+
+/* FFRace.exe 0x00016cec: the cmp chain maps 0 .. 0x1a onto the pointers at
+   0x00083bac, 0x00083ba4, 0x00083b9c, 0x00083b94, 0x00083b8c, 0x00083b84,
+   0x00083b7c, 0x00083b74, 0x00083b6c, 0x00083b64, 0x00083b5c, 0x00083b54,
+   0x00083b4c, 0x00083b48, 0x00083b3c, 0x00083b34, 0x00083b2c, 0x00083b24,
+   0x00083b1c, 0x00083b14, 0x00083b08, 0x00083b00, 0x00083afc, 0x00083af4,
+   0x00083aec, 0x00083ae4 and 0x00083adc, its 0x00016cf0 arm taking index 10
+   and its 0x00016d68 arm index 0. */
+static const char *const ff_racer_names[FF_RACER_NAMES] = {
+    "INLINER", "LOGAN",  "KILGOR",  "ARISME",   "EXEACO", "KIHYNO",
+    "SKIPPY",  "KORTAIL", "HEASY",  "XETRA",    "JRC",    "XELNAGA",
+    "SUMPTER", "JAY",    "KEITARIO", "LIKO",    "EDUPIN", "KONDOR",
+    "YANHOA",  "SUNNY",  "KISSWERT", "DIVAD",   "BEN",    "SLOUN",
+    "XEAROX",  "VULKU",  "OSARIS"
+};
+
+const char *Racer_Name(int index)
+{
+    if (index < 0 || index >= FF_RACER_NAMES)
+        return "";
+
+    return ff_racer_names[index];
+}
+
 int Racer_Seg(int slot)
 {
     return ff_racer_seg[slot];

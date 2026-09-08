@@ -4,9 +4,11 @@
 #include "ff_appassets.h"
 #include "ff_consts.h"
 #include "ff_ingame.h"
+#include "ff_lap.h"
 #include "ff_menu.h"
 #include "ff_physics.h"
 #include "ff_race.h"
+#include "ff_racer.h"
 #include "ff_screen.h"
 #include "ff_text.h"
 
@@ -66,6 +68,105 @@ static void Standing(const ff_surface *dst, int x, int y)
                    Race_Rank());
 }
 
+/* FFRace.exe 0x00046754 at 0x0004ae30 steps the standings rows by 0xf from 0x14
+   and columns a row at 5, 0x5a, 0x65, 0x70, 0x7b, 0x80 and 0x8b. */
+#define FF_CP_ROW_PITCH 0x0f
+#define FF_CP_ROW_BASE  0x14
+#define FF_CP_NAME_X    5
+#define FF_CP_SIGN_X    0x5a
+#define FF_CP_POINT_X   0x7b
+
+/* FFRace.exe 0x00046754 passes 0xfffffffb, 0xfffffffd and 0xfffffffe to
+   Text_DrawGlyph 0x00013548, whose 0x30 bias turns them into 0x2b, 0x2d and
+   0x2e, and passes 5 as the field of its 0x7b column. */
+#define FF_CP_PLUS   (-5)
+#define FF_CP_MINUS  (-3)
+#define FF_CP_POINT  (-2)
+#define FF_CP_POINT_FIELD 5
+
+/* FFRace.exe 0x0004ae40 gates 0x00084648 on __rt_udiv(500, 0x000a7654) leaving
+   a remainder below 0xfa. */
+#define FF_CP_BLINK_PERIOD 500
+#define FF_CP_BLINK_ON     0xfa
+
+/* FFRace.exe 0x0004adb8 compares 0x000a772c * 0x3c + 0x000a7728 against
+   0x000902bc * 0x3c + 0x000902a4 + 4. */
+#define FF_CP_HOLD_SEC 4
+
+/* FFRace.exe 0x0004aea0 passes 0x000a77ec + slot - 1 to 0x00016cec, 0x0004af1c
+   picks the glyph and the delta from 0x0008546c against 0x00085468 + slot * 4,
+   and 0x0004af60 onwards splits the delta with __rt_sdiv 1000, 100, 10 and 10. */
+static void Checkpoint_Row(const ff_surface *dst, int slot)
+{
+    int order = Lap_Order(slot);
+    int y     = order * FF_CP_ROW_PITCH + FF_CP_ROW_BASE;
+    int delta;
+    int sign;
+
+    if (order == FF_LAP_NO_ORDER)
+        return;
+
+    Text_DrawCentered(dst, FF_CP_NAME_X, y,
+                      Racer_Name(Racer_Base() + slot - 1), 0, 0, 0, 0);
+
+    if (Lap_Order(FF_RACER_PLAYER) < order) {
+        sign  = FF_CP_PLUS;
+        delta = (Lap_Seconds(slot) - Lap_Seconds(FF_RACER_PLAYER)) * 100 -
+                Lap_Hundredths(FF_RACER_PLAYER) + Lap_Hundredths(slot);
+    } else {
+        sign  = FF_CP_MINUS;
+        delta = (Lap_Seconds(FF_RACER_PLAYER) - Lap_Seconds(slot)) * 100 +
+                Lap_Hundredths(FF_RACER_PLAYER) - Lap_Hundredths(slot);
+    }
+
+    Text_DrawGlyph(dst, FF_CP_SIGN_X, y, FF_HUD_FIELD, 0xff, 0xff, 0xff, sign);
+    Text_DrawGlyph(dst, 0x65, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+                   delta / 1000 % 10);
+    Text_DrawGlyph(dst, 0x70, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+                   delta / 100 % 10);
+    Text_DrawGlyph(dst, FF_CP_POINT_X, y, FF_CP_POINT_FIELD, 0xff, 0xff, 0xff,
+                   FF_CP_POINT);
+    Text_DrawGlyph(dst, 0x80, y, FF_HUD_FIELD, 0xff, 0xff, 0xff,
+                   delta / 10 % 10);
+    Text_DrawGlyph(dst, 0x8b, y, FF_HUD_FIELD, 0xff, 0xff, 0xff, delta % 10);
+}
+
+/* FFRace.exe 0x00046754 at 0x0004ad7c gates on __rt_sdiv(0x000832c4 / 4,
+   0x000a76b4) leaving a remainder above 1, the clock below 0x000902bc * 0x3c +
+   0x000902a4 + 4, 0x000a76b4 between 0x000832c4 / 4 and 0x000832c4, and
+   0x000a779c at 0. */
+static void Checkpoint(const ff_surface *dst)
+{
+    int quarter = Race_Length() / 4;
+    int pos     = Race_Segment();
+    int order;
+    int slot;
+
+    if (quarter < 1)
+        return;
+    if (pos % quarter <= 1)
+        return;
+    if (Ingame_Minutes() * FF_MINUTE_SEC + Physics_Countdown() >=
+        Lap_Minutes(FF_RACER_PLAYER) * FF_MINUTE_SEC +
+            Lap_Seconds(FF_RACER_PLAYER) + FF_CP_HOLD_SEC)
+        return;
+    if (pos <= quarter || pos >= Race_Length() ||
+        Race_Mode() != FF_RACE_SCRIPTED)
+        return;
+
+    Text_DrawCentered(dst, 0x19, 5, "CHECK POINT", 0, 0, 0, 0);
+
+    order = Lap_Order(FF_RACER_PLAYER);
+    if (order != FF_LAP_NO_ORDER &&
+        Ingame_SecondMs() % FF_CP_BLINK_PERIOD < FF_CP_BLINK_ON)
+        Text_DrawCentered(dst, FF_CP_NAME_X,
+                          order * FF_CP_ROW_PITCH + FF_CP_ROW_BASE, "PLAYER",
+                          0, 0, 0, 0);
+
+    for (slot = FF_RACER_FIRST; slot < FF_RACER_SLOTS; slot++)
+        Checkpoint_Row(dst, slot);
+}
+
 /* FFRace.exe 0x00046754 for 0x000a7630 == 0: 0x0008458c at 0x000832b0,
    0x000a4584 / 0x000a4588 as 0x40 wide at 5, 0x114 with 0x000a7670 / 1000 + 1
    rows, 0x000a458c / 0x000a4590 as 0x46 x 0x28 at 0xa5, 0x113 filled
@@ -77,6 +178,8 @@ static void Hud_Big(const ff_surface *dst)
     unsigned         key     = Menu_Key();
     float            derived = Physics_Derived();
     int              speed   = (int)(derived * 31.0f);
+
+    Checkpoint(dst);
 
     Text_DrawCentered(dst, centre, 0x117, ":", 1, 0xff, 0xff, 0xff);
     Clock(dst, centre, 0x118);

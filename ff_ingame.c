@@ -227,6 +227,10 @@ void Ingame_Frame(const ff_surface *dst)
     Ship_Draw(dst);
     Opponent_Ships(dst);
     Ship_Wreck(dst);
+    /* FFRace.exe 0x00046754 plays 0x000a4c20 at the head of the 39999 <
+       0x000a7670 block, on the frame it enters with 0x000a77c0 at 0. */
+    if (Ship_TakeWreckSound())
+        Audio_Play(FF_SND_EXPL);
     Hud_Frame(dst);
 }
 

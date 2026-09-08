@@ -13,6 +13,14 @@ void Racer_PickBase(void);
    0x000144b0 overwrites 0x000a4318 and 0x000a431c with 0x000832fc * 0.625. */
 void Racer_Seed(int mode);
 
+/* FFRace.exe 0x000a77ec, the base 0x00046754 adds the slot to before it calls
+   0x00016cec for a standings row. */
+int Racer_Base(void);
+
+/* FFRace.exe 0x00016cec, a cmp chain over 0 .. 0x1a returning one of 27 string
+   pointers at 0x00083adc .. 0x00083bac and falling through to r0 unchanged. */
+const char *Racer_Name(int index);
+
 /* FFRace.exe 0x000865d0, the per-racer segment index; 0x0004f6bc compares
    0x000865d4 + 1 against slots 2 .. 5 for the POS field. */
 int  Racer_Seg(int slot);
