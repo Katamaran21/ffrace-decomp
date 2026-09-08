@@ -70,6 +70,12 @@ int Race_Theme(void);
 int Race_Sky(void);
 int Race_Length(void);
 
+/* FFRace.exe 0x000a77f0 sits past the 0x1800 raw span of .data at 0x00083000,
+   so it starts at 0; Race_Init 0x00013aec raises it for a career entry of 3 and
+   the 0x0004f6bc screen 2 tap toggles it.  0x00047f70 and 0x00048a10 widen the
+   opponent slot bound by 2 while it is 1, and 0x0004d3a0 raises the overlay. */
+int Race_Cops(void);
+
 /* FFRace.exe Track_Generate 0x00014a20 LoadBitmapW ids, keyed on 0x000833b8 and
    split on the layout marker 0x000a7630. */
 int Race_SkyResource(void);

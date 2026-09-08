@@ -274,9 +274,45 @@ static void Hud_Small(const ff_surface *dst)
     Standing(dst, 0x7d, 0xce);
 }
 
+/* FFRace.exe .data 0x000832e4 initialiser 25; 0x0004d3bc, 0x0004d404,
+   0x0004e024, 0x0004e058 and 0x0004e08c offset it by 4, 0xc, 8, 6 and 4. */
+#define FF_COPS_SEC 25
+
+/* FFRace.exe 0x0004d3e4 passes 0xf, and 0x0004e03c, 0x0004e070 and 0x0004e0a0
+   each pass 0x1e, with no 0x000a7630 term. */
+#define FF_COPS_TITLE_Y 0x0f
+#define FF_COPS_NAG_Y   0x1e
+
+/* FFRace.exe 0x0004d3a0 .. 0x0004d3d4 gates on 0x000a77f0 == 1,
+   0x000832e4 + 4 < 0x000a7728 and 0x000a779c == 1; 0x0004d3f8 draws
+   0x000845f8 centred on 0x000832b0 in black and 0x0004d418 leaves through
+   0x00014924 with 0 and 1. */
+static void Hud_Cops(const ff_surface *dst)
+{
+    int centre = Menu_CentreX();
+    int sec    = Physics_Countdown();
+
+    if (Race_Cops() != 1 || FF_COPS_SEC + 4 >= sec ||
+        Race_Mode() != FF_RACE_ENDLESS)
+        return;
+
+    Text_DrawCentered(dst, centre, FF_COPS_TITLE_Y, "THE COPS :", 1, 0, 0, 0);
+
+    if (FF_COPS_SEC + 0xc < sec)
+        Screen_Set(FF_SCREEN_MAIN, 1);
+    else if (FF_COPS_SEC + 8 < sec)
+        Text_DrawCentered(dst, centre, FF_COPS_NAG_Y, "This is only a demo!", 1,
+                          0, 0, 0);
+    else if (FF_COPS_SEC + 6 < sec)
+        Text_DrawCentered(dst, centre, FF_COPS_NAG_Y, "Stop now!", 1, 0, 0, 0);
+    else
+        Text_DrawCentered(dst, centre, FF_COPS_NAG_Y, "Hey!", 1, 0, 0, 0);
+}
+
 /* FFRace.exe 0x00046754 tail: 0x000a463c as 0x96 x 0x32 when 0x000a7728 == 0
    with 0x000a7654 != 0 and 0x000a772c == 0, then 0x000a4638 column
-   (0x000a7728 + 3) * 100 when 0x000a7728 < 0, both tinted 0x000a77b8. */
+   (0x000a7728 + 3) * 100 when 0x000a7728 < 0, both tinted 0x000a77b8; its
+   0x0004d388 skip of the first pair reaches 0x0004d38c, not the return. */
 void Hud_Frame(const ff_surface *dst)
 {
     const ff_sprite *sprite;
@@ -291,9 +327,7 @@ void Hud_Frame(const ff_surface *dst)
 
     Results_Frame(dst);
 
-    if (count == 0) {
-        if (Ingame_SecondMs() == 0 || Ingame_Minutes() != 0)
-            return;
+    if (count == 0 && Ingame_SecondMs() != 0 && Ingame_Minutes() == 0) {
         sprite = AppAssets_Sprite(dst, FF_RES_GO);
         if (sprite != 0)
             Blit_Glyph(dst, Menu_CentreX() - FF_GO_DX, FF_GO_Y - layout, FF_GO_W,
@@ -306,4 +340,6 @@ void Hud_Frame(const ff_surface *dst)
                        FF_DIGIT_W, FF_DIGIT_H, sprite, tint, tint, tint,
                        (count + 3) * FF_DIGIT_W, 0);
     }
+
+    Hud_Cops(dst);
 }

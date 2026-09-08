@@ -37,6 +37,7 @@ static int   ff_win_extra[FF_WINDOW_SEGMENTS];
 static int   ff_win_detail[FF_WINDOW_SEGMENTS];
 
 static int   ff_mode;          /* 0x000a779c */
+static int   ff_cops;          /* 0x000a77f0 */
 static int   ff_theme;         /* 0x000833b8 */
 static int   ff_sky;           /* 0x000a77c8 */
 static int   ff_length;        /* 0x000832c4 */
@@ -318,6 +319,11 @@ void Race_Advance(float distance)
 int Race_Mode(void)
 {
     return ff_mode;
+}
+
+int Race_Cops(void)
+{
+    return ff_cops;
 }
 
 int Race_Theme(void)

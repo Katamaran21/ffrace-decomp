@@ -21,15 +21,13 @@
    0x00048aa4 both form the slot bound as
    ((0x000a779c == 2) + (0x000a779c == 0) * 2) * 3
    + (0x000a779c == 1 && 0x000a77f0 == 1) * 2 + (0x000a779c == 1),
-   and 0x00048010 / 0x00048aa0 compare the slot against it.
-
-   FFRace.exe 0x000a77f0 is written only by the demo pass outside 0x00046754, so
-   the second term stays 0 here. */
+   and 0x00048010 / 0x00048aa0 compare the slot against it. */
 static int Opponent_SlotBound(void)
 {
     int mode = Race_Mode();
 
     return ((mode == FF_RACE_ENDLESS_2) + (mode == FF_RACE_SCRIPTED) * 2) * 3
+           + (mode == FF_RACE_ENDLESS && Race_Cops() == 1) * 2
            + (mode == FF_RACE_ENDLESS);
 }
 
