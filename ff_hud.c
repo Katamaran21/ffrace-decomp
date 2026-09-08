@@ -9,6 +9,7 @@
 #include "ff_physics.h"
 #include "ff_race.h"
 #include "ff_racer.h"
+#include "ff_results.h"
 #include "ff_screen.h"
 #include "ff_text.h"
 
@@ -287,6 +288,8 @@ void Hud_Frame(const ff_surface *dst)
         Hud_Big(dst);
     else
         Hud_Small(dst);
+
+    Results_Frame(dst);
 
     if (count == 0) {
         if (Ingame_SecondMs() == 0 || Ingame_Minutes() != 0)

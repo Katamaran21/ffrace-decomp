@@ -28,4 +28,8 @@ void Ship_Wreck(const ff_surface *dst);
    when it enters that block with 0x000a77c0 at 0. */
 int Ship_TakeWreckSound(void);
 
+/* FFRace.exe 0x0004ccd0 reads 0x000a77c0 beside 0x000a77cc for the results gate
+   and 0x0004ceb0 tests it again for the headline. */
+int Ship_WreckCount(void);
+
 #endif /* FF_SHIP_H */

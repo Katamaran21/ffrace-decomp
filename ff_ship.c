@@ -111,3 +111,8 @@ int Ship_TakeWreckSound(void)
     ff_wreck_sound = 0;
     return pending;
 }
+
+int Ship_WreckCount(void)
+{
+    return ff_wreck;
+}

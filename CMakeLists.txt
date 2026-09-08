@@ -32,6 +32,7 @@ set(FFRACE_SOURCES
     ff_racer.c
     ff_rand.c
     ff_render.c
+    ff_results.c
     ff_road.c
     ff_screen.c
     ff_settings.c
