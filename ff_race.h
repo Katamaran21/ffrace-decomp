@@ -137,6 +137,10 @@ void Race_SetPlayerSegment(int seg);
 void Race_UpdateRank(void);
 int  Race_Rank(void);
 
+/* FFRace.exe 0x0004f6bc keeps 0x000a7754 and racer slot 2 within 0x000a76bc
+   once 0x000a7728 passes 0x000832e4. */
+void Race_CopsChase(void);
+
 /* FFRace.exe 0x000a77fc and 0x000a3b84, written by the physics pass in
    0x0004f6bc between 0x00052320 and 0x00053390. */
 void Race_SetCurve(float curve);

@@ -10,22 +10,24 @@
 #include <stdlib.h>
 
 /* FFRace.exe 0x000136d8 appends each name to \Sounds\ and calls hssSound::load
-   then volume(); Race_Init 0x00013aec loads the engine sample at 0x18, and
-   0x000a4860 is the only 0x000136d8 entry taking loop(1). */
+   then loop() then volume(); 0x000a4860 is the only one of its nine objects
+   taking loop(1), and Race_Init 0x00013aec loads the engine sample at 0x18 with
+   loop(0x000a4d10, 1). */
 static const struct {
     const char *name;
     int         volume;
+    int         loop;
 } ff_snd_table[FF_SND_COUNT] = {
-    { "sblam.wav",   0x20 },
-    { "smenu.wav",   0x20 },
-    { "sexpl.wav",   0x40 },
-    { "smiss.wav",   0x40 },
-    { "scount3.wav", 0x40 },
-    { "scount2.wav", 0x40 },
-    { "scount1.wav", 0x40 },
-    { "sgo.wav",     0x40 },
-    { "ssiren.wav",  0x20 },
-    { "sengine.wav", 0x18 }
+    { "sblam.wav",   0x20, 0 },
+    { "smenu.wav",   0x20, 0 },
+    { "sexpl.wav",   0x40, 0 },
+    { "smiss.wav",   0x40, 0 },
+    { "scount3.wav", 0x40, 0 },
+    { "scount2.wav", 0x40, 0 },
+    { "scount1.wav", 0x40, 0 },
+    { "sgo.wav",     0x40, 0 },
+    { "ssiren.wav",  0x20, 1 },
+    { "sengine.wav", 0x18, 1 }
 };
 
 /* FFRace.exe Music_Select 0x00045b34 leaves its pick loaded in 0x000a4d88 and
@@ -45,7 +47,7 @@ void Audio_Init(void)
     for (i = 0; i < FF_SND_COUNT; i++)
         Platform_SoundLoad(i, Assets_Sound(ff_snd_table[i].name),
                            ff_snd_table[i].volume * FF_MIX_VOLUME_MAX
-                           / FF_VOLUME_MAX);
+                           / FF_VOLUME_MAX, ff_snd_table[i].loop);
     Audio_PushVolumes();
 }
 

@@ -147,11 +147,13 @@ void Ingame_Tick(void)
 
     if (ff_sec_ms > FF_SECOND_MS) {
         seconds = Physics_Countdown() + 1;
-        if (seconds == FF_MINUTE_SEC) {
-            seconds = 0;
-            ff_minutes++;
-        }
         Physics_SetCountdown(seconds);
+
+        /* FFRace.exe 0x0004f6bc plays 0x000a4860 while 0x000a779c == 1 and
+           0x000a77f0 == 1 as 0x000a7728 reaches 0x000832e4. */
+        if (Race_Mode() == FF_RACE_ENDLESS && Race_Cops() == 1 &&
+            seconds == FF_COPS_SEC)
+            Audio_Play(FF_SND_SIREN);
 
         /* FFRace.exe 0x0004f6bc plays 0x000a4a40, 0x000a49c8, 0x000a4950 and
            0x000a48d8 as 0x000a7728 steps -3, -2, -1 and 0, and playMusic on 1
@@ -167,6 +169,13 @@ void Ingame_Tick(void)
         else if (seconds == 1)
             Audio_MusicStart();
 
+        /* FFRace.exe 0x000511c8 carries 0x000a7728 into 0x000a772c below every
+           playSound of the block above. */
+        if (seconds == FF_MINUTE_SEC) {
+            Physics_SetCountdown(0);
+            ff_minutes++;
+        }
+
         ff_fps      = ff_frames;
         ff_sec_base = Platform_Ticks();
         ff_frames   = 0;
@@ -174,6 +183,7 @@ void Ingame_Tick(void)
     }
 
     Race_UpdateRank();
+    Race_CopsChase();
 
     /* FFRace.exe 0x0004f6bc WM_KEYDOWN keys 0x000833c4, 0x000833c8,
        0x000833d8 and 0x000833dc. */

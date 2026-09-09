@@ -274,10 +274,6 @@ static void Hud_Small(const ff_surface *dst)
     Standing(dst, 0x7d, 0xce);
 }
 
-/* FFRace.exe .data 0x000832e4 initialiser 25; 0x0004d3bc, 0x0004d404,
-   0x0004e024, 0x0004e058 and 0x0004e08c offset it by 4, 0xc, 8, 6 and 4. */
-#define FF_COPS_SEC 25
-
 /* FFRace.exe 0x0004d3e4 passes 0xf, and 0x0004e03c, 0x0004e070 and 0x0004e0a0
    each pass 0x1e, with no 0x000a7630 term. */
 #define FF_COPS_TITLE_Y 0x0f

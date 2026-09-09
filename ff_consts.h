@@ -103,4 +103,10 @@
 #define FF_CAREER_RACE_ALL   0x1e
 #define FF_SHIPS_OPEN_ALL    FF_SHIP_SPRITES
 
+/* FFRace.exe .data 0x000832e4 initialiser 25; 0x0004f6bc compares 0x000a7728
+   against it at the 0x000a4860 playSound and again at the chase gate that
+   follows the 0x000a77c4 block, and 0x0004d3bc, 0x0004d404, 0x0004e024,
+   0x0004e058 and 0x0004e08c offset it by 4, 0xc, 8, 6 and 4. */
+#define FF_COPS_SEC 25
+
 #endif /* FF_CONSTS_H */

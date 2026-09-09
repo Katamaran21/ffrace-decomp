@@ -16,6 +16,7 @@ typedef struct {
     Uint32   len;
     int      volume;
     int      rate;
+    int      loop;
     int      from_wav;
 } ff_sound;
 
@@ -96,21 +97,39 @@ static void SDLCALL MixVoices(void *user, Uint8 *out, int len)
     Mod_Render((short *)out, len / 2);
     MixLoop(out, len);
 
+    /* FFRace.exe 0x000136d8 gives 0x000a4860 hssSound::loop(1) and every other
+       object loop(0). */
     for (i = 0; i < FF_VOICES; i++) {
         const ff_sound *snd;
-        Uint32          left;
-        Uint32          n;
+        int             done = 0;
 
         if (ff_voices[i].slot < 0)
             continue;
-        snd  = &ff_sounds[ff_voices[i].slot];
-        left = snd->len - ff_voices[i].pos;
-        n    = (left < (Uint32)len) ? left : (Uint32)len;
-        SDL_MixAudioFormat(out, snd->data + ff_voices[i].pos, ff_audio_spec.format,
-                           n, snd->volume * ff_master_vol / FF_MASTER_VOLUME_MAX);
-        ff_voices[i].pos += n;
-        if (ff_voices[i].pos >= snd->len)
+        snd = &ff_sounds[ff_voices[i].slot];
+        if (snd->len == 0) {
             ff_voices[i].slot = -1;
+            continue;
+        }
+
+        while (done < len) {
+            Uint32 left = snd->len - ff_voices[i].pos;
+            Uint32 n    = (left < (Uint32)(len - done)) ? left
+                                                       : (Uint32)(len - done);
+
+            SDL_MixAudioFormat(out + done, snd->data + ff_voices[i].pos,
+                               ff_audio_spec.format, n,
+                               snd->volume * ff_master_vol
+                                   / FF_MASTER_VOLUME_MAX);
+            ff_voices[i].pos += n;
+            done += (int)n;
+            if (ff_voices[i].pos < snd->len)
+                continue;
+            if (!snd->loop) {
+                ff_voices[i].slot = -1;
+                break;
+            }
+            ff_voices[i].pos = 0;
+        }
     }
 }
 
@@ -204,7 +223,7 @@ void Platform_MusicMasterVolume(int volume)
     SDL_UnlockAudioDevice(ff_audio_dev);
 }
 
-int Platform_SoundLoad(int slot, const char *path, int volume)
+int Platform_SoundLoad(int slot, const char *path, int volume, int loop)
 {
     SDL_AudioSpec spec;
     SDL_AudioCVT  cvt;
@@ -247,6 +266,7 @@ int Platform_SoundLoad(int slot, const char *path, int volume)
        0x000a7748, which 0x00050f88 then scales. */
     ff_sounds[slot].rate   = spec.freq;
     ff_sounds[slot].volume = volume;
+    ff_sounds[slot].loop   = loop;
     return 1;
 }
 

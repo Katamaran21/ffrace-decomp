@@ -62,7 +62,11 @@ void Platform_Delay(unsigned ms);
 
 int Platform_AudioInit(void);
 void Platform_AudioPause(int pause);
-int Platform_SoundLoad(int slot, const char *path, int volume);
+
+/* FFRace.exe 0x000136d8 follows every hssSound::load with loop(obj, 0) except
+   0x000a4860, which takes loop(obj, 1); the flag belongs to the object, so
+   0x0004f6bc reaches it through the ordinary playSound of 0x000a4db0. */
+int Platform_SoundLoad(int slot, const char *path, int volume, int loop);
 void Platform_SoundPlay(int slot);
 
 /* FFRace.exe Race_Init 0x00013aec and Screen_Set 0x000149d4 both open with

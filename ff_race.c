@@ -456,6 +456,36 @@ int Race_Rank(void)
     return ff_rank;
 }
 
+/* FFRace.exe 0x0004f6bc, below its 0x000a77c4 block and gated on 0x000a779c ==
+   1 with 0x000a77f0 == 1: 0x000a7728 under 0x000832e4 writes -10 into
+   0x000a7754 and 0x000a42f8 and 0x15 into 0x000865d8; past it 0x000a76bc - 7
+   floors the first two, 0x000a76bc + 0x17 floors the third and 0x000a42c8 takes
+   __adds(0x000a42c4, 0x41200000). */
+void Race_CopsChase(void)
+{
+    int leash;
+
+    if (ff_mode != FF_RACE_ENDLESS || ff_cops != 1)
+        return;
+
+    if (Physics_Countdown() < FF_COPS_SEC) {
+        ff_chase_seg = -10;
+        Racer_SetSegCount(FF_RACER_FIRST, -10);
+        Racer_SetSeg(FF_RACER_FIRST, 0x15);
+        return;
+    }
+
+    leash = ff_seg_counter - 7;
+    if (ff_chase_seg < leash)
+        ff_chase_seg = leash;
+    if (Racer_SegCount(FF_RACER_FIRST) < leash)
+        Racer_SetSegCount(FF_RACER_FIRST, leash);
+    if (Racer_Seg(FF_RACER_FIRST) < ff_seg_counter + 0x17)
+        Racer_SetSeg(FF_RACER_FIRST, ff_seg_counter + 0x17);
+
+    Racer_SetSpeed(FF_RACER_FIRST, Racer_Speed(FF_RACER_PLAYER) + 10.0f);
+}
+
 void Race_SetCurve(float curve)
 {
     ff_curve = curve;
