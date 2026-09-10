@@ -48,7 +48,12 @@ static int TryRoot(const char *base, const char *sub)
 
 int Assets_Init(void)
 {
+    /* Windows CE has no process environment and coredll has no getenv. */
+#ifdef FF_WINCE
+    const char *env  = NULL;
+#else
     const char *env  = getenv("FFRACE_ASSETS");
+#endif
     const char *base = Platform_BasePath();
 
     ff_fail[0] = '\0';
@@ -60,6 +65,31 @@ int Assets_Init(void)
         return 1;
     if (TryRoot(base, "assets/"))
         return 1;
+
+    /* Windows CE has no current directory, so if the executable's own directory
+       did not answer there is nothing relative left to try - only the absolute
+       places a game gets copied to.  Platform_BasePath searches these too, but
+       it is reached through GetModuleFileName; this covers the case where that
+       returned a path which exists yet holds no assets. */
+#ifdef FF_WINCE
+    {
+        static const char *const dirs[] = {
+            "\\Storage Card\\FFRace\\",
+            "\\SD Card\\FFRace\\",
+            "\\Program Files\\FFRace\\",
+            "\\My Documents\\FFRace\\",
+            "\\Windows\\FFRace\\",
+            "\\FFRace\\",
+            "\\Storage Card\\"
+        };
+        size_t i;
+
+        for (i = 0; i < sizeof dirs / sizeof dirs[0]; i++) {
+            if (TryRoot(dirs[i], ""))
+                return 1;
+        }
+    }
+#endif
     return 0;
 }
 

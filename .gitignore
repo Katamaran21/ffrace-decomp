@@ -1,5 +1,7 @@
 build/
 build-cmake/
+build-win32/
+build-wince/
 dist/
 *.obj
 *.exe

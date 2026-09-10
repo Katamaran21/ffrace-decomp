@@ -313,6 +313,13 @@ const char *Platform_BasePath(void)
 #endif
 }
 
+/* SDL_GetBasePath is the only source here, so there is nothing to tell apart;
+   the native backend is the one with several. */
+const char *Platform_BaseOrigin(void)
+{
+    return "SDL_GetBasePath";
+}
+
 const char *Platform_PrefPath(void)
 {
 #ifdef __ANDROID__

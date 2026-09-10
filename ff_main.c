@@ -10,7 +10,11 @@
 #include "ff_screen.h"
 #include "ff_text.h"
 
+#ifndef FF_BACKEND_WIN32
+/* SDL2 renames main to SDL_main on Windows and Android.  The native Win32
+   backend in ff_platform_win32.c links no SDL at all and needs no shim. */
 #include <SDL_main.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,7 +65,7 @@ int main(int argc, char **argv)
     if (!Platform_Init(FF_VIEW_W, FF_VIEW_H, scale, "FFRace port")) {
         char msg[FF_MSG_MAX];
 
-        snprintf(msg, sizeof msg, "SDL could not open the window:\n\n%s",
+        snprintf(msg, sizeof msg, "Could not open the window:\n\n%s",
                  Platform_LastError());
         Platform_ShowError("FFRace", msg);
         Platform_Shutdown();
@@ -71,12 +75,21 @@ int main(int argc, char **argv)
 
     if (!Assets_Init()) {
         char msg[FF_MSG_MAX];
+        /* Windows CE has no process environment, so pointing the player at
+           FFRACE_ASSETS there would be advice they cannot act on. */
+#ifdef FF_WINCE
+        const char *hint = "Copy the BITMAP, Sounds and Musics folders next to\n"
+                           "ffrace.exe.";
+#else
+        const char *hint = "Copy the BITMAP, Sounds and Musics folders next to\n"
+                           "ffrace.exe, or set FFRACE_ASSETS to the folder that\n"
+                           "holds them.";
+#endif
 
         snprintf(msg, sizeof msg,
                  "FFRace cannot find its assets.\n\nLooked for BITMAP/%d.bmp in:\n%s\n"
-                 "Copy the BITMAP, Sounds and Musics folders next to ffrace.exe,\n"
-                 "or set FFRACE_ASSETS to the folder that holds them.",
-                 FF_RES_FONT, Assets_FailureText());
+                 "Install directory from: %s\n\n%s",
+                 FF_RES_FONT, Assets_FailureText(), Platform_BaseOrigin(), hint);
         Platform_ShowError("FFRace", msg);
         Platform_Shutdown();
         return 1;

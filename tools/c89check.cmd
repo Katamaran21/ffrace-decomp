@@ -12,9 +12,16 @@ cd /d "%~dp0.."
 
 set RC=0
 for %%F in (ff_*.c) do (
-  "%CLANG%" --quiet --checks=clang-diagnostic-* "%%F" -- -std=c89 -pedantic-errors -Wall ^
-    -isystem "%SDL%\include" -isystem "%SDL%\include\SDL2" -D_WIN32 ^
-    -D_CRT_SECURE_NO_WARNINGS || set RC=1
+  rem The native backend includes windows.h, and the SDK headers are not C89:
+  rem they use inline, long long and unnamed unions, so -pedantic-errors fires
+  rem inside the SDK before it ever reaches our code.  MSVC and mingw-w64 still
+  rem compile those two files in the normal C90 build.
+  echo %%F | findstr /i /c:"_win32.c" >nul
+  if errorlevel 1 (
+    "%CLANG%" --quiet --checks=clang-diagnostic-* "%%F" -- -std=c89 -pedantic-errors -Wall ^
+      -isystem "%SDL%\include" -isystem "%SDL%\include\SDL2" -D_WIN32 ^
+      -D_CRT_SECURE_NO_WARNINGS || set RC=1
+  )
 )
 if "%RC%"=="0" echo C89 OK
 exit /b %RC%

@@ -36,7 +36,15 @@ fi
 
 mkdir -p "$app/jni/src"
 find "$app/jni/src" -maxdepth 1 \( -name '*.c' -o -name '*.h' \) -delete
-cp "$root"/ff_*.c "$root"/ff_*.h "$app/jni/src/"
+# The native Win32/WinCE backend lives in the same directory, but its files
+# include <windows.h> and ndk-build compiles whatever it finds in jni/src.
+# Copy everything except those so the glob below cannot pick them up.
+for f in "$root"/ff_*.c "$root"/ff_*.h; do
+    case ${f##*/} in
+    *_win32.c) ;;
+    *) cp "$f" "$app/jni/src/" ;;
+    esac
+done
 cp "$root/android/Android.mk" "$app/jni/src/Android.mk"
 cp "$root/android/AndroidManifest.xml" "$app/src/main/AndroidManifest.xml"
 cp "$root/android/strings.xml" "$app/src/main/res/values/strings.xml"

@@ -8,7 +8,9 @@ SDL_PATH := ../SDL
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/$(SDL_PATH)/include
 
-LOCAL_SRC_FILES := $(notdir $(wildcard $(LOCAL_PATH)/*.c))
+# ff_platform_win32.c and ff_audio_win32.c are the native Windows/CE
+# backend and include <windows.h>, which the NDK has no notion of.
+LOCAL_SRC_FILES := $(filter-out %_win32.c,$(notdir $(wildcard $(LOCAL_PATH)/*.c)))
 
 LOCAL_SHARED_LIBRARIES := SDL2
 

@@ -30,6 +30,10 @@ jobs:
         run: |
           sdl=$(pkg-config --cflags sdl2 | sed 's/-I/-isystem /g')
           for f in ff_*.c; do
+            # ff_platform_win32.c and ff_audio_win32.c include windows.h, which
+            # this host has no copy of, and the Windows SDK headers are not C89
+            # anyway.  The windows-native job below compiles them for real.
+            case "$f" in *_win32.c) continue;; esac
             gcc -std=c89 -pedantic-errors -Wall -Wextra $sdl -c "$f" -o /dev/null
           done
 
@@ -149,6 +153,23 @@ jobs:
             exit 1
           }
 
+      # The same sources with FFRACE_BACKEND=win32: GDI and waveOut, no SDL2.
+      # Build only - the runner has no interactive desktop to present to.
+      - name: Build the native Win32 backend
+        run: |
+          cmake -S . -B build-native -A ${{ matrix.platform }} `
+            -DFFRACE_BACKEND=win32
+          cmake --build build-native --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffrace-windows-native-${{ matrix.arch }}
+          path: |
+            build-native/Release/ffrace.exe
+            build-native/Release/BITMAP
+            build-native/Release/Sounds
+            build-native/Release/Musics
+
       - uses: actions/upload-artifact@v4
         with:
           name: ffrace-windows-${{ matrix.arch }}
@@ -158,6 +179,61 @@ jobs:
             build/Release/BITMAP
             build/Release/Sounds
             build/Release/Musics
+
+  windows-native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mingw-w64 and Wine
+        run: |
+          # The wine command comes from the "wine" package; "wine64" ships no
+          # binaries of its own.  Creating a prefix also runs the 32-bit
+          # rundll32 over wine.inf, so the i386 side has to be there or the
+          # prefix is left half-built and every later run fails.
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64 wine wine32:i386 wine64 xvfb
+
+      - name: Build
+        run: MINGW_PREFIX=x86_64-w64-mingw32 sh tools/build_win32.sh
+
+      - name: Headless frame dump under Wine
+        run: |
+          cd build-win32
+          export WINEPREFIX="$PWD/.wine"
+          export WINEARCH=win64
+          # Keep err: messages; only the fixme noise is worth hiding here.
+          export WINEDEBUG=fixme-all
+          # Build the prefix in its own step and wait for the server to exit,
+          # so a first-run failure is reported as such instead of surfacing as
+          # a confusing exit code from the game.
+          xvfb-run -a wineboot --init
+          wineserver -w
+          # Platform_Init really does call CreateWindowExW, GetDC and
+          # SetForegroundWindow, so hand it an X server rather than trusting
+          # Wine's null display driver to fake all three.
+          set +e
+          xvfb-run -a timeout 180 wine ffrace.exe 1 --dump=frame.raw --dump-frame=60
+          rc=$?
+          set -e
+          echo "ffrace exit code: $rc"
+          test "$rc" = 0
+          expected=$((240 * 320 * 2))
+          actual=$(stat -c%s frame.raw)
+          test "$actual" = "$expected" || {
+            echo "frame.raw is $actual bytes, expected $expected"
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffrace-windows-native-mingw
+          path: |
+            build-win32/ffrace.exe
+            build-win32/BITMAP
+            build-win32/Sounds
+            build-win32/Musics
 
   android:
     runs-on: ubuntu-24.04
@@ -203,7 +279,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, android]
+    needs: [linux, windows, windows-native, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -224,7 +300,11 @@ jobs:
           for arch in x86 arm64; do
             (cd "artifacts/ffrace-windows-$arch" &&
              zip -qr "$GITHUB_WORKSPACE/dist/ffrace-$ver-windows-$arch.zip" .)
+            (cd "artifacts/ffrace-windows-native-$arch" &&
+             zip -qr "$GITHUB_WORKSPACE/dist/ffrace-$ver-windows-native-$arch.zip" .)
           done
+          (cd artifacts/ffrace-windows-native-mingw &&
+           zip -qr "$GITHUB_WORKSPACE/dist/ffrace-$ver-windows-native-x86_64.zip" .)
           cp artifacts/ffrace-android/*.apk "dist/ffrace-$ver-android.apk"
           ls -l dist
 
@@ -238,11 +318,16 @@ jobs:
           | `*-android.apk` | Android 5.0+, universal (armeabi-v7a, arm64-v8a, x86, x86_64), экранное управление |
           | `*-windows-x86.zip` | Windows x86 |
           | `*-windows-arm64.zip` | Windows ARM64 |
+          | `*-windows-native-x86.zip` | Windows x86, нативный бэкенд (GDI + waveOut, без SDL2) |
+          | `*-windows-native-arm64.zip` | Windows ARM64, нативный бэкенд |
+          | `*-windows-native-x86_64.zip` | Windows x64, нативный бэкенд, собран mingw-w64 |
           | `*-linux-x86_64.tar.gz` | Linux x86_64 |
           | `*-linux-arm64.tar.gz` | Linux ARM64 |
 
           Ассеты уложены рядом с исполняемым файлом, распаковывать целиком.
           На Linux нужен установленный SDL2 (`libsdl2-2.0-0`), в остальных сборках SDL2 лежит внутри.
+          Нативным сборкам SDL2 не нужен вообще; тот же бэкенд собирается под Windows CE
+          скриптом `tools/build_wince.sh`.
           EOF
 
       - name: Publish the release
