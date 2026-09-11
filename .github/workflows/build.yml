@@ -235,6 +235,62 @@ jobs:
             build-win32/Sounds
             build-win32/Musics
 
+  wince:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm, i386]
+    runs-on: ubuntu-24.04
+    # Prebuilt public CeGCC 9.3.0 for arm-mingw32ce / i386-mingw32ce; no cegcc
+    # package exists in Debian or Ubuntu, and building it here would dominate
+    # the run.  https://github.com/enlyze/ghcr-windows-ce-build-environment
+    container: ghcr.io/enlyze/windows-ce-build-environment-${{ matrix.arch }}:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          CEGCC=/opt/cegcc-${{ matrix.arch }} \
+            TARGET=${{ matrix.arch }}-mingw32ce \
+            sh tools/build_wince.sh
+
+      # A runner has no Windows CE host and no CE emulator, so this binary
+      # cannot be executed here the way the Wine job executes the Win32 one.
+      # What is checkable is that it came out as a CE PE for the requested
+      # architecture and that every import resolves to coredll.dll - the one
+      # library a device actually provides.  aygshell is deliberately absent:
+      # ff_platform_win32.c resolves SHFullScreen with LoadLibrary so images
+      # without aygshell still run.
+      - name: Inspect the binary
+        run: |
+          bin=/opt/cegcc-${{ matrix.arch }}/bin
+          ls "$bin"
+          objdump=$bin/${{ matrix.arch }}-mingw32ce-objdump
+          "$objdump" -f build-wince/ffrace.exe | tee format.txt
+          "$objdump" -p build-wince/ffrace.exe > headers.txt
+          cat headers.txt
+          grep -qi '${{ matrix.arch }}' format.txt
+          grep -i 'DLL Name' headers.txt > dlls.txt || {
+            echo "objdump printed no import table"
+            exit 1
+          }
+          grep -qi 'coredll' dlls.txt
+          for bad in kernel32 user32 gdi32 winmm aygshell; do
+            if grep -qi "$bad" dlls.txt; then
+              echo "unexpected import $bad - a device only provides coredll"
+              exit 1
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffrace-wince-${{ matrix.arch }}
+          path: |
+            build-wince/ffrace.exe
+            build-wince/BITMAP
+            build-wince/Sounds
+            build-wince/Musics
+
   android:
     runs-on: ubuntu-24.04
     steps:
@@ -279,7 +335,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, windows-native, android]
+    needs: [linux, windows, windows-native, wince, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -305,6 +361,10 @@ jobs:
           done
           (cd artifacts/ffrace-windows-native-mingw &&
            zip -qr "$GITHUB_WORKSPACE/dist/ffrace-$ver-windows-native-x86_64.zip" .)
+          for arch in arm i386; do
+            (cd "artifacts/ffrace-wince-$arch" &&
+             zip -qr "$GITHUB_WORKSPACE/dist/ffrace-$ver-wince-$arch.zip" .)
+          done
           cp artifacts/ffrace-android/*.apk "dist/ffrace-$ver-android.apk"
           ls -l dist
 
@@ -321,13 +381,18 @@ jobs:
           | `*-windows-native-x86.zip` | Windows x86, нативный бэкенд (GDI + waveOut, без SDL2) |
           | `*-windows-native-arm64.zip` | Windows ARM64, нативный бэкенд |
           | `*-windows-native-x86_64.zip` | Windows x64, нативный бэкенд, собран mingw-w64 |
+          | `*-wince-arm.zip` | Windows CE / Pocket PC / Windows Mobile, ARM |
+          | `*-wince-i386.zip` | Windows CE, x86 (эмулятор устройства, промышленные панели) |
           | `*-linux-x86_64.tar.gz` | Linux x86_64 |
           | `*-linux-arm64.tar.gz` | Linux ARM64 |
 
           Ассеты уложены рядом с исполняемым файлом, распаковывать целиком.
           На Linux нужен установленный SDL2 (`libsdl2-2.0-0`), в остальных сборках SDL2 лежит внутри.
-          Нативным сборкам SDL2 не нужен вообще; тот же бэкенд собирается под Windows CE
-          скриптом `tools/build_wince.sh`.
+          Нативным сборкам SDL2 не нужен вообще: кадр идёт через GDI, звук через waveOut.
+          Сборки для Windows CE собраны cegcc 9.3.0 и из зависимостей требуют только
+          `coredll.dll`; каталог распаковывается на устройство целиком, например в
+          `\Program Files\FFRace`. На устройстве они не запускались - проверено только то,
+          что это корректный CE PE нужной архитектуры.
           EOF
 
       - name: Publish the release
