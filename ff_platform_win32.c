@@ -215,9 +215,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 #ifdef FF_WINCE
-/* aygshell.dll SHFullScreen hides the taskbar and the SIP button.  Plain
-   Windows CE images ship no aygshell, so the entry point is resolved at run
-   time and its absence is not an error. */
+/* aygshell.dll SHFullScreen hides the taskbar, the SIP button and the start
+   icon.  Plain Windows CE images ship no aygshell, so the entry point is
+   resolved at run time and its absence is not an error. */
 typedef BOOL(WINAPI *ff_shfullscreen)(HWND, DWORD);
 
 static void GoFullScreen(HWND hwnd)
@@ -228,8 +228,10 @@ static void GoFullScreen(HWND hwnd)
     if (lib == NULL)
         return;
     fn = (ff_shfullscreen)GetProcAddress(lib, L"SHFullScreen");
+    /* Pocket PC SDK aygshell.h "Valid states": SHFS_HIDETASKBAR 0x0002,
+       SHFS_HIDESIPBUTTON 0x0008, SHFS_HIDESTARTICON 0x0020. */
     if (fn != NULL)
-        fn(hwnd, 0x0002 | 0x0008 | 0x0010);
+        fn(hwnd, 0x0002 | 0x0008 | 0x0020);
 }
 #endif
 
